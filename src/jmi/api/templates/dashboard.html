@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Market Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#faf7f2; --surface:#ffffff; --surface-2:#f5f1ea; --sink:#efe9e0;
+    --line:#e4dbcf; --line-strong:#d3c6b5;
+    --ink:#20180f; --ink-2:#5c5145; --ink-3:#8d8073;
+    --brand:#6b4226; --brand-2:#8c5c38; --brand-soft:#f1e7db; --brand-ink:#ffffff;
+    --pos:#3f6b4f; --neg:#a4432f;
+    --r:6px; --r-lg:10px;
+    --serif:ui-serif,Georgia,"Iowan Old Style","Palatino Linotype",Palatino,serif;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  html[data-theme="dark"]{
+    /* Near-black ground so the brown reads as brown rather than washing out
+       into tan, which is what happens against a mid-dark background. */
+    --paper:#0a0907; --surface:#12100e; --surface-2:#1a1613; --sink:#221d18;
+    --line:#2a2320; --line-strong:#3d342c;
+    --ink:#f4efe8; --ink-2:#bcb2a6; --ink-3:#877d72;
+    --brand:#b0713c; --brand-2:#c9884a; --brand-soft:#241a12; --brand-ink:#0a0806;
+    --pos:#6fae82; --neg:#d4735a;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+    font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--brand); text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3,.serif{font-family:var(--serif); font-weight:600; letter-spacing:-.01em}
+  svg.i{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.7;
+        stroke-linecap:round; stroke-linejoin:round; flex:none}
+  svg.i.sm{width:14px; height:14px}
+
+  /* ---------- nav ---------- */
+  .nav{position:sticky; top:0; z-index:30; background:var(--surface);
+       border-bottom:1px solid var(--line)}
+  .nav-inner{max-width:1300px; margin:0 auto; padding:0 24px; display:flex; align-items:center; gap:30px; height:62px}
+  .brand{display:flex; align-items:center; gap:11px; font-family:var(--serif); font-size:17px; font-weight:600; color:var(--ink)}
+  .brand:hover{text-decoration:none}
+  .mark{width:30px; height:30px; border-radius:5px; background:var(--brand); color:var(--brand-ink);
+        display:grid; place-items:center; font-family:var(--serif); font-size:14px; font-weight:600; letter-spacing:-.03em}
+  .nav-links{display:flex; gap:2px; margin-left:6px; flex:1; overflow-x:auto}
+  .nav-links a{display:flex; align-items:center; gap:7px; padding:8px 13px; border-radius:var(--r);
+               color:var(--ink-2); font-size:14px; font-weight:500; white-space:nowrap}
+  .nav-links a:hover{background:var(--surface-2); color:var(--ink); text-decoration:none}
+  .nav-links a.on{background:var(--brand-soft); color:var(--brand); font-weight:600}
+  .nav-right{display:flex; align-items:center; gap:8px}
+
+  /* ---------- shell ---------- */
+  .wrap{max-width:1300px; margin:0 auto; padding:28px 24px 80px}
+  .page-head{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; margin-bottom:22px; flex-wrap:wrap}
+  .page-head h1{margin:0; font-size:27px}
+  .page-head p{margin:5px 0 0; color:var(--ink-2); font-size:14px; max-width:62ch}
+  .status{display:flex; align-items:center; gap:8px; color:var(--ink-3); font-size:12.5px; white-space:nowrap}
+  .live{width:6px; height:6px; border-radius:50%; background:var(--pos)}
+
+  /* ---------- controls ---------- */
+  button{font:inherit; font-family:var(--sans); cursor:pointer; border-radius:var(--r); border:1px solid transparent; transition:.13s}
+  .btn{background:var(--brand); color:var(--brand-ink); padding:9px 16px; font-weight:600; font-size:13.5px;
+       display:inline-flex; align-items:center; gap:7px}
+  .btn:hover{background:var(--brand-2)}
+  .btn-ghost{background:var(--surface); color:var(--ink-2); border:1px solid var(--line); padding:8px 14px;
+             font-size:13.5px; display:inline-flex; align-items:center; gap:7px}
+  .btn-ghost:hover{background:var(--surface-2); color:var(--ink); border-color:var(--line-strong)}
+  .btn-ghost.on{background:var(--brand-soft); color:var(--brand); border-color:transparent; font-weight:600}
+  .ibtn{background:var(--surface); border:1px solid var(--line); color:var(--ink-2); width:36px; height:36px;
+        display:inline-grid; place-items:center; border-radius:var(--r)}
+  .ibtn:hover{background:var(--surface-2); color:var(--ink)}
+  input,select{background:var(--surface); color:var(--ink); border:1px solid var(--line); font-family:var(--sans);
+               border-radius:var(--r); padding:8px 11px; font-size:13.5px}
+  input:focus,select:focus{outline:none; border-color:var(--brand)}
+  ::placeholder{color:var(--ink-3)}
+  label.check{display:inline-flex; align-items:center; gap:7px; color:var(--ink-2); font-size:13.5px; cursor:pointer; user-select:none}
+  input[type=checkbox]{accent-color:var(--brand)}
+
+  .filters{display:flex; flex-wrap:wrap; gap:9px; align-items:center; background:var(--surface);
+           border:1px solid var(--line); border-radius:var(--r-lg); padding:13px 15px; margin-bottom:12px}
+  .search-wrap{position:relative; display:flex; align-items:center}
+  .search-wrap svg{position:absolute; left:11px; color:var(--ink-3)}
+  .search-wrap input{padding-left:33px; min-width:245px}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:18px}
+  .chip{padding:6px 13px; border-radius:100px; background:var(--surface); border:1px solid var(--line);
+        font-size:12.5px; color:var(--ink-2); font-weight:500; display:inline-flex; align-items:center; gap:6px}
+  .chip:hover{border-color:var(--brand); color:var(--brand)}
+  .chip.on{background:var(--brand); border-color:var(--brand); color:var(--brand-ink)}
+  .chip .n{opacity:.7; font-size:11px}
+  .tagx{display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:100px;
+        background:var(--brand-soft); color:var(--brand); font-size:12.5px; font-weight:500}
+  .tagx b{font-weight:600} .tagx button{background:none; border:0; color:inherit; opacity:.65; padding:0; display:grid}
+  .tagx button:hover{opacity:1}
+
+  /* ---------- surfaces ---------- */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(172px,1fr)); gap:1px; margin-bottom:22px;
+        background:var(--line); border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden}
+  .kpi{background:var(--surface); padding:17px 19px}
+  .kpi .label{color:var(--ink-3); font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:600}
+  .kpi .value{font-family:var(--serif); font-size:29px; margin-top:6px; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .kpi .note{color:var(--ink-3); font-size:12px; margin-top:2px}
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(12,1fr)}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:18px 20px 20px; min-width:0}
+  .card > h2{margin:0; font-size:16px; display:flex; justify-content:space-between; align-items:center; gap:12px}
+  .card .hint{color:var(--ink-3); font-size:12.5px; margin:4px 0 15px}
+  .span-3{grid-column:span 3} .span-4{grid-column:span 4} .span-5{grid-column:span 5}
+  .span-6{grid-column:span 6} .span-7{grid-column:span 7} .span-8{grid-column:span 8} .span-12{grid-column:span 12}
+  .chart-box{position:relative; height:300px}
+  .chart-tall{height:365px}
+
+  /* ---------- tables ---------- */
+  table{width:100%; border-collapse:collapse; font-size:13.5px}
+  th{text-align:left; color:var(--ink-3); font-weight:600; font-size:10.5px; text-transform:uppercase;
+     letter-spacing:.07em; padding:9px 10px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--surface); z-index:1}
+  td{padding:11px 10px; border-bottom:1px solid var(--line); vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr.row:hover{background:var(--surface-2)}
+  tr.clickable{cursor:pointer}
+  .num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .scroll{max-height:520px; overflow:auto}
+  .jtitle{font-weight:600}
+  .jco{color:var(--ink-2); font-size:13px}
+  .tag{display:inline-block; padding:2px 9px; border-radius:100px; background:var(--surface-2);
+       border:1px solid var(--line); font-size:11.5px; color:var(--ink-2); white-space:nowrap}
+  .tag.clickable:hover{background:var(--brand); color:var(--brand-ink); border-color:transparent}
+  .money{font-variant-numeric:tabular-nums; font-weight:600; color:var(--pos)}
+  .star{background:none; border:0; color:var(--ink-3); padding:3px; display:grid; place-items:center}
+  .star.on{color:var(--brand)} .star:hover{color:var(--brand)}
+  .apply{display:inline-flex; align-items:center; gap:5px; background:var(--brand); color:var(--brand-ink);
+         padding:6px 12px; border-radius:var(--r); font-size:12.5px; font-weight:600; white-space:nowrap}
+  .apply:hover{background:var(--brand-2); text-decoration:none; color:var(--brand-ink)}
+  .muted{color:var(--ink-3)}
+  .empty{color:var(--ink-3); padding:38px 10px; text-align:center; font-size:13.5px}
+  .bar{height:5px; background:var(--sink); border-radius:100px; overflow:hidden; min-width:46px}
+  .bar span{display:block; height:100%; background:var(--brand); border-radius:100px}
+  .pager{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; flex-wrap:wrap}
+  .pager .info{color:var(--ink-2); font-size:13px}
+  .delta{font-variant-numeric:tabular-nums; font-weight:600; display:inline-flex; align-items:center; gap:4px}
+  .delta.up{color:var(--pos)} .delta.down{color:var(--neg)}
+
+  /* ---------- gap page ---------- */
+  .profile-box{background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-lg); padding:16px 18px}
+  .profile-chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; min-height:32px}
+  .stat-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:14px; margin-top:16px}
+  .stat{background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:12px 14px}
+  .stat .k{color:var(--ink-3); font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; font-weight:600}
+  .stat .v{font-family:var(--serif); font-size:22px; margin-top:3px; font-variant-numeric:tabular-nums}
+  .band{display:flex; gap:1px; border-radius:var(--r); overflow:hidden; border:1px solid var(--line); margin:6px 0 2px}
+  .band div{flex:1; padding:11px 8px; text-align:center; background:var(--surface-2)}
+  .band .k{font-size:10.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; font-weight:600}
+  .band .v{font-family:var(--serif); font-size:17px; margin-top:2px; font-variant-numeric:tabular-nums}
+  .band .mid{background:var(--brand-soft)} .band .mid .v{color:var(--brand)}
+
+  /* ---------- drawer ---------- */
+  .scrim{position:fixed; inset:0; background:rgba(6,5,4,.62); opacity:0; pointer-events:none; transition:.2s; z-index:40}
+  .scrim.open{opacity:1; pointer-events:auto}
+  .drawer{position:fixed; top:0; right:0; height:100%; width:min(660px,100%); background:var(--surface);
+          border-left:1px solid var(--line); transform:translateX(100%);
+          transition:transform .25s cubic-bezier(.4,0,.2,1); z-index:50; display:flex; flex-direction:column}
+  .drawer.open{transform:none}
+  .drawer-head{padding:22px 24px 18px; border-bottom:1px solid var(--line)}
+  .drawer-body{padding:20px 24px 40px; overflow-y:auto; flex:1}
+  .drawer-body h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-3); margin:22px 0 10px; font-family:var(--sans); font-weight:700}
+  .desc{white-space:pre-wrap; font-size:13.5px; line-height:1.7; color:var(--ink-2)}
+  .meta-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:1px; background:var(--line);
+             border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+  .meta-grid div{background:var(--surface); padding:11px 13px}
+  .meta-grid .k{color:var(--ink-3); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; font-weight:600}
+  .meta-grid .v{margin-top:3px; font-size:13.5px; font-weight:550}
+
+  #toasts{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:60; display:flex; flex-direction:column; gap:8px}
+  .toast{background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:100px; font-size:13px; font-weight:500}
+
+  .view{display:none} .view.on{display:block}
+  footer{margin-top:44px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink-3); font-size:12.5px}
+  footer p{margin:6px 0}
+  @media(max-width:1080px){ .span-3,.span-4,.span-5,.span-6,.span-7,.span-8{grid-column:span 12} }
+</style>
+</head>
+<body>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-overview" viewBox="0 0 24 24"><path d="M3 20h18M6 20V10M12 20V4M18 20v-7"/></symbol>
+  <symbol id="i-jobs" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/></symbol>
+  <symbol id="i-skills" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-pay" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+  <symbol id="i-gap" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6"/></symbol>
+  <symbol id="i-pipeline" viewBox="0 0 24 24"><path d="M3 12h4l3 7 4-14 3 7h4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.7 6.2.7-4.6 4.2 1.2 6.1-5.4-3-5.4 3 1.2-6.1L3.2 9.9l6.2-.7L12 3.5Z"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M4 17 10 11l4 4 6-7"/><path d="M14 8h6v6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M4 7 10 13l4-4 6 7"/><path d="M14 16h6v-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4Z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></symbol>
+</svg>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#/overview"><span class="mark">JM</span> Job Market Intelligence</a>
+    <div class="nav-links" id="navLinks"></div>
+    <div class="nav-right">
+      <button class="ibtn" id="themeBtn" title="Switch theme"><svg class="i"><use href="#i-moon"/></svg></button>
+      <a class="btn-ghost" href="/docs" target="_blank" rel="noopener"><svg class="i sm"><use href="#i-doc"/></svg> API</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <h1 id="pageTitle">Overview</h1>
+      <p id="pageDesc"></p>
+    </div>
+    <div class="status"><span class="live"></span><span id="statusText">loading…</span></div>
+  </div>
+
+  <div id="filterHost"></div>
+
+  <!-- ============ OVERVIEW ============ -->
+  <section class="view" id="v-overview">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid">
+      <div class="card span-4">
+        <h2>Gaining ground</h2>
+        <div class="hint">Skills asked for more in the last 30 days than the 30 before</div>
+        <div id="rising"></div>
+      </div>
+      <div class="card span-4">
+        <h2>Losing ground</h2>
+        <div class="hint">Same window, moving the other way</div>
+        <div id="falling"></div>
+      </div>
+      <div class="card span-4">
+        <h2>Where postings come from</h2>
+        <div class="hint">After cross-posted duplicates are merged</div>
+        <div class="chart-box" style="height:250px"><canvas id="sourceChart"></canvas></div>
+      </div>
+      <div class="card span-7">
+        <h2>Most in-demand skills</h2>
+        <div class="hint">Share of postings mentioning each skill</div>
+        <div class="chart-box chart-tall"><canvas id="ovSkillChart"></canvas></div>
+      </div>
+      <div class="card span-5">
+        <h2>Top locations</h2>
+        <div class="hint">Resolved from free-text location strings</div>
+        <div class="chart-box chart-tall"><canvas id="countryChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ JOBS ============ -->
+  <section class="view" id="v-jobs">
+    <div class="chips" id="quickChips"></div>
+    <div class="chips" id="activeFilters"></div>
+    <div class="card span-12">
+      <h2>
+        <span>Postings <span class="muted" id="jobCount"></span></span>
+        <span style="display:flex; gap:8px">
+          <button class="btn-ghost" id="matchBtn" title="Rank by how well each job matches your profile">
+            <svg class="i sm"><use href="#i-gap"/></svg> Rank by match</button>
+          <button class="btn-ghost" id="exportBtn"><svg class="i sm"><use href="#i-download"/></svg> CSV</button>
+        </span>
+      </h2>
+      <div class="hint">Select a row for the full posting, or apply directly on the source site</div>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th style="width:30px"></th><th id="matchHead" style="display:none; width:92px">Match</th>
+            <th>Role</th><th>Company</th><th>Location</th><th>Level</th>
+            <th class="num">Salary / yr</th><th>Source</th><th style="width:84px"></th>
+          </tr></thead>
+          <tbody id="jobTable"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span class="info" id="pageInfo"></span>
+        <span style="display:flex; gap:8px">
+          <button class="btn-ghost" id="prevBtn"><svg class="i sm"><use href="#i-left"/></svg> Previous</button>
+          <button class="btn-ghost" id="nextBtn">Next <svg class="i sm"><use href="#i-right"/></svg></button>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SKILLS ============ -->
+  <section class="view" id="v-skills">
+    <div class="grid">
+      <div class="card span-7">
+        <h2>Skill demand &amp; pay</h2>
+        <div class="hint">Select a row to see the stack it travels with</div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Skill</th><th>Category</th><th class="num">Jobs</th><th class="num">Share</th><th class="num">Avg pay</th><th></th></tr></thead>
+            <tbody id="skillTable"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card span-5">
+        <h2 id="coocTitle">Commonly paired with…</h2>
+        <div class="hint">Skills requested alongside the selected one</div>
+        <div class="scroll" style="max-height:520px">
+          <table>
+            <thead><tr><th>Skill</th><th class="num">Jobs</th><th class="num">Share</th></tr></thead>
+            <tbody id="coocTable"><tr><td colspan="3" class="empty">Select a skill on the left.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card span-12">
+        <h2>Demand over time</h2>
+        <div class="hint">Postings per week mentioning each skill, by posting date</div>
+        <input type="text" id="trendSkills" value="python,typescript,react,aws,kubernetes"
+               style="width:100%; max-width:560px; margin-bottom:14px" placeholder="comma-separated skill slugs">
+        <div class="chart-box"><canvas id="trendChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COMPENSATION ============ -->
+  <section class="view" id="v-pay">
+    <div class="grid">
+      <div class="card span-12">
+        <h2>What the market pays</h2>
+        <div class="hint">Annualised USD midpoints across postings that disclosed pay (<span id="payN"></span>)</div>
+        <div class="band" id="payBand"></div>
+      </div>
+      <div class="card span-7">
+        <h2>Salary distribution</h2>
+        <div class="hint">Clipped to the 5th and 95th percentile so outliers cannot flatten the shape</div>
+        <div class="chart-box"><canvas id="distChart"></canvas></div>
+      </div>
+      <div class="card span-5">
+        <h2>Pay by seniority</h2>
+        <div class="hint">Levels with under 3 disclosed salaries are hidden</div>
+        <div class="chart-box"><canvas id="salaryChart"></canvas></div>
+      </div>
+      <div class="card span-12">
+        <h2>Best paid skills</h2>
+        <div class="hint">Ranked by average salary, with the sample size each figure rests on</div>
+        <div class="scroll" style="max-height:400px">
+          <table>
+            <thead><tr><th>Skill</th><th>Category</th><th class="num">Jobs</th><th class="num">Avg salary</th><th class="num">Sample</th></tr></thead>
+            <tbody id="paySkillTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SKILL GAP ============ -->
+  <section class="view" id="v-gap">
+    <div class="grid">
+      <div class="card span-5">
+        <h2>Your stack</h2>
+        <div class="hint">Add what you already know. Everything below is computed against it</div>
+        <div class="profile-box">
+          <div style="display:flex; gap:8px">
+            <input list="skillList" id="skillInput" placeholder="Type a skill, e.g. Python" style="flex:1">
+            <button class="btn" id="addSkill"><svg class="i sm"><use href="#i-plus"/></svg> Add</button>
+          </div>
+          <datalist id="skillList"></datalist>
+          <div class="profile-chips" id="profileChips"></div>
+        </div>
+        <div class="stat-row" id="gapStats"></div>
+        <div style="margin-top:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+          <label class="check" for="thresholdSel">Counts as a match at</label>
+          <select id="thresholdSel">
+            <option value="0.5">50% of the stack</option>
+            <option value="0.6">60% of the stack</option>
+            <option value="0.7" selected>70% of the stack</option>
+            <option value="0.8">80% of the stack</option>
+          </select>
+        </div>
+      </div>
+      <div class="card span-7">
+        <h2>Learn this next</h2>
+        <div class="hint">
+          For every skill you lack, how many additional postings you would qualify for by adding
+          just that one. Not raw popularity: marginal gain.
+        </div>
+        <div class="scroll" style="max-height:520px">
+          <table>
+            <thead><tr><th>Skill</th><th class="num">Unlocks</th><th class="num">Avg pay there</th><th class="num">Total demand</th><th></th></tr></thead>
+            <tbody id="gapTable"><tr><td colspan="5" class="empty">Add a few skills to see what to learn next.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PIPELINE ============ -->
+  <section class="view" id="v-pipeline">
+    <div class="grid">
+      <div class="card span-12">
+        <h2>Sources</h2>
+        <div class="hint">Each source is a separate scraper; adding one is a class and a registry line</div>
+        <div class="scroll" style="max-height:none">
+          <table>
+            <thead><tr><th>Source</th><th>Attribution</th><th class="num">Active postings</th><th></th></tr></thead>
+            <tbody id="sourceTable"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card span-12">
+        <h2>Crawl history</h2>
+        <div class="hint">Every run is audited: requests made, postings fetched, new rows, duplicates, failures</div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Started</th><th>Source</th><th>Status</th><th class="num">Fetched</th><th class="num">New</th>
+            <th class="num">Updated</th><th class="num">Dupes</th><th class="num">Requests</th><th class="num">Data</th><th class="num">Time</th></tr></thead>
+            <tbody id="runTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p><strong>Sources:</strong> <span id="attrib">loading…</span></p>
+    <p>Crawling respects robots.txt and per-domain rate limits. Salaries are parsed from free text or
+       source fields and converted to annual USD at pinned FX rates, so treat them as indicative rather than authoritative.</p>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start">
+      <div style="min-width:0">
+        <div id="dTitle" class="serif" style="font-size:20px"></div>
+        <div id="dCompany" style="color:var(--ink-2); font-size:13.5px; margin-top:3px"></div>
+      </div>
+      <button class="ibtn" id="closeDrawer"><svg class="i"><use href="#i-close"/></svg></button>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:9px; flex-wrap:wrap">
+      <a id="dApply" class="apply" target="_blank" rel="noopener noreferrer">
+        Apply on source <svg class="i sm"><use href="#i-ext"/></svg></a>
+      <button class="btn-ghost" id="dSave"><svg class="i sm"><use href="#i-star"/></svg> <span>Save</span></button>
+    </div>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<div id="toasts"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const icon = (name, cls = "i sm") => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
+const charts = {};
+
+const PALETTES = {
+  light: ["#6b4226","#a1673f","#c9a06c","#4a6b52","#8a8c5c","#a4432f","#7a6a58","#d0b48a"],
+  dark:  ["#b0713c","#c9884a","#dda86e","#6fae82","#9aa46e","#d4735a","#9c8a76","#e8c79a"],
+};
+const palette = () => PALETTES[document.documentElement.dataset.theme === "dark" ? "dark" : "light"];
+
+const KEY = { saved: "jmi.saved", theme: "jmi.theme", profile: "jmi.profile" };
+const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+let saved = store(KEY.saved, []);
+let profile = store(KEY.profile, []);
+let taxonomy = [];
+
+const state = { page: 0, limit: 25, sort: "recent", skill: null, savedOnly: false, total: 0, byMatch: false };
+
+const money = (v) => v == null ? "-" : "$" + Math.round(v).toLocaleString();
+const pct = (v) => (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+function toast(msg) {
+  const el = document.createElement("div");
+  el.className = "toast"; el.textContent = msg;
+  $("toasts").appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+async function api(path, params) {
+  const qs = params && [...params].length ? "?" + params.toString() : "";
+  const res = await fetch(path + qs);
+  if (!res.ok) throw new Error(path + " → " + res.status);
+  return res.json();
+}
+
+function drawChart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  const el = $(id);
+  if (el) charts[id] = new Chart(el, config);
+}
+
+/* ================= routing ================= */
+const ROUTES = [
+  { id: "overview", icon: "i-overview", label: "Overview", title: "Overview",
+    desc: "The shape of the market right now, across every source.", load: loadOverview, filters: false },
+  { id: "jobs", icon: "i-jobs", label: "Jobs", title: "Postings",
+    desc: "Search the deduplicated corpus and apply on the source site.", load: loadJobs, filters: true },
+  { id: "skills", icon: "i-skills", label: "Skills", title: "Skills",
+    desc: "What employers ask for, what it pays, and what it travels with.", load: loadSkills, filters: true },
+  { id: "pay", icon: "i-pay", label: "Compensation", title: "Compensation",
+    desc: "Percentile bands and distribution, because an average alone hides the shape.", load: loadPay, filters: true },
+  { id: "gap", icon: "i-gap", label: "Skill Gap", title: "Skill gap analysis",
+    desc: "Which single skill would qualify you for the most additional jobs.", load: loadGap, filters: false },
+  { id: "pipeline", icon: "i-pipeline", label: "Pipeline", title: "Pipeline",
+    desc: "Crawl telemetry: what ran, what it fetched, what it cost.", load: loadPipeline, filters: false },
+];
+
+function renderNav(active) {
+  $("navLinks").innerHTML = ROUTES.map(r =>
+    `<a href="#/${r.id}" class="${r.id === active ? "on" : ""}">
+       <svg class="i sm"><use href="#${r.icon}"/></svg>${r.label}</a>`).join("");
+}
+
+function currentRoute() {
+  const id = (location.hash.replace("#/", "") || "overview").split("?")[0];
+  return ROUTES.find(r => r.id === id) || ROUTES[0];
+}
+
+async function route() {
+  const r = currentRoute();
+  renderNav(r.id);
+  ROUTES.forEach(x => $("v-" + x.id).classList.toggle("on", x.id === r.id));
+  $("pageTitle").textContent = r.title;
+  $("pageDesc").textContent = r.desc;
+  $("filterHost").style.display = r.filters ? "" : "none";
+  try { await r.load(); } catch (e) { console.error(e); toast("Could not load this view"); }
+}
+window.addEventListener("hashchange", route);
+
+/* ================= theme ================= */
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  put(KEY.theme, theme);
+  $("themeBtn").innerHTML = `<svg class="i"><use href="#i-${theme === "dark" ? "sun" : "moon"}"/></svg>`;
+  Chart.defaults.color = theme === "dark" ? "#bcb2a6" : "#5c5145";
+  Chart.defaults.borderColor = theme === "dark" ? "rgba(42,35,32,.95)" : "rgba(228,219,207,.9)";
+  Chart.defaults.font.family = "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+  if (Object.keys(charts).length) route();
+}
+$("themeBtn").addEventListener("click", () =>
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+
+/* ================= filters ================= */
+$("filterHost").innerHTML = `
+  <div class="filters">
+    <span class="search-wrap">${icon("search", "i")}<input type="search" id="fSearch" placeholder="Role or company…  (press /)"></span>
+    <select id="fSource"><option value="">All sources</option></select>
+    <select id="fSeniority"><option value="">Any level</option></select>
+    <select id="fCountry"><option value="">Any country</option></select>
+    <select id="fDays"><option value="">Any time</option><option value="7">Last 7 days</option>
+      <option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option></select>
+    <select id="fSort"><option value="recent">Newest first</option><option value="salary">Highest paid</option>
+      <option value="company">By company</option></select>
+    <label class="check"><input type="checkbox" id="fRemote"> Remote</label>
+    <label class="check"><input type="checkbox" id="fSalary"> Has salary</label>
+    <button class="btn-ghost" id="resetBtn">Reset</button>
+  </div>`;
+
+function filterParams() {
+  const p = new URLSearchParams();
+  const v = (id) => $(id) ? $(id).value : "";
+  if (v("fSearch").trim()) p.set("search", v("fSearch").trim());
+  if (v("fSource")) p.set("source", v("fSource"));
+  if (v("fSeniority")) p.set("seniority", v("fSeniority"));
+  if (v("fCountry")) p.set("country", v("fCountry"));
+  if (v("fDays")) p.set("posted_within_days", v("fDays"));
+  if ($("fRemote")?.checked) p.set("remote_only", "true");
+  if ($("fSalary")?.checked) p.set("with_salary_only", "true");
+  if (state.skill) p.append("skill", state.skill);
+  return p;
+}
+
+const QUICK = [
+  { key: "remote",   label: "Remote only",     on: () => $("fRemote").checked,               set: (v) => $("fRemote").checked = v },
+  { key: "pakistan", label: "Pakistan",        on: () => $("fCountry").value === "Pakistan", set: (v) => $("fCountry").value = v ? "Pakistan" : "" },
+  { key: "salary",   label: "Salary disclosed",on: () => $("fSalary").checked,               set: (v) => $("fSalary").checked = v },
+  { key: "senior",   label: "Senior and above",on: () => $("fSeniority").value === "senior", set: (v) => $("fSeniority").value = v ? "senior" : "" },
+  { key: "saved",    label: "Saved",           on: () => state.savedOnly,                    set: (v) => state.savedOnly = v },
+];
+
+function renderQuickChips() {
+  $("quickChips").innerHTML = QUICK.map(q => {
+    const count = q.key === "saved" && saved.length ? `<span class="n">${saved.length}</span>` : "";
+    return `<button class="chip${q.on() ? " on" : ""}" data-key="${q.key}">${q.label}${count}</button>`;
+  }).join("");
+  $("quickChips").querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    const q = QUICK.find(x => x.key === c.dataset.key);
+    const turningOn = !q.on();
+    if (turningOn && q.key !== "saved") state.savedOnly = false;
+    q.set(turningOn);
+    state.page = 0;
+    loadJobs();
+  }));
+}
+
+function renderActiveFilters() {
+  const bits = [];
+  const add = (k, label, v) => v && bits.push([k, label, v]);
+  add("search", "Search", $("fSearch").value.trim());
+  add("source", "Source", $("fSource").value);
+  add("seniority", "Level", $("fSeniority").value);
+  add("country", "Country", $("fCountry").value);
+  if ($("fRemote").checked) add("remote", "Remote", "yes");
+  if ($("fSalary").checked) add("salary", "Salary", "disclosed");
+  add("skill", "Skill", state.skill);
+
+  $("activeFilters").innerHTML = bits.map(([k, label, v]) =>
+    `<span class="tagx"><b>${label}:</b> ${esc(v)} <button data-clear="${k}">${icon("close", "i sm")}</button></span>`).join("");
+  $("activeFilters").querySelectorAll("[data-clear]").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.clear;
+    ({ search: () => $("fSearch").value = "", source: () => $("fSource").value = "",
+       seniority: () => $("fSeniority").value = "", country: () => $("fCountry").value = "",
+       remote: () => $("fRemote").checked = false, salary: () => $("fSalary").checked = false,
+       skill: () => state.skill = null })[k]();
+    state.page = 0;
+    loadJobs();
+  }));
+}
+
+/* ================= overview ================= */
+async function loadOverview() {
+  const [ov, skills, bySource, byCountry, momentum] = await Promise.all([
+    api("/api/analytics/overview"),
+    api("/api/analytics/skills", new URLSearchParams({ limit: "14" })),
+    api("/api/analytics/breakdown/source"),
+    api("/api/analytics/breakdown/country", new URLSearchParams({ limit: "8" })),
+    api("/api/analytics/momentum", new URLSearchParams({ limit: "6" })),
+  ]);
+
+  $("kpis").innerHTML = [
+    ["Active postings", ov.total_jobs.toLocaleString(), ov.duplicates_detected.toLocaleString() + " duplicates merged"],
+    ["Companies", ov.companies.toLocaleString(), "hiring right now"],
+    ["Remote", pct(ov.remote_share), ov.remote_jobs.toLocaleString() + " postings"],
+    ["Salary disclosed", pct(ov.salary_disclosure_rate), ov.jobs_with_salary.toLocaleString() + " postings"],
+    ["Median pay", money(ov.avg_salary_usd), "n = " + ov.salary_sample_size.toLocaleString()],
+  ].map(([l, v, n]) => `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`).join("");
+
+  const trendList = (rows, dir) => rows.length ? rows.map(r => `
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--line)">
+      <span><a href="#/jobs" data-skill="${r.slug}">${esc(r.name)}</a>
+        <span class="muted" style="font-size:12px"> ${r.recent} vs ${r.prior}</span></span>
+      <span class="delta ${dir}">${icon(dir === "up" ? "up" : "down")}${r.change > 0 ? "+" : ""}${Math.round(r.change * 100)}%</span>
+    </div>`).join("") : `<div class="empty">Not enough dated postings yet.</div>`;
+
+  $("rising").innerHTML = trendList(momentum.rising, "up");
+  $("falling").innerHTML = trendList(momentum.falling, "down");
+  document.querySelectorAll("[data-skill]").forEach(a => a.addEventListener("click", () => {
+    state.skill = a.dataset.skill; state.page = 0;
+  }));
+
+  drawChart("ovSkillChart", barConfig(skills.slice(0, 14).reverse(), r => r.name, r => r.job_count,
+    (c) => { const r = skills.slice(0, 14).reverse()[c.dataIndex];
+             return `${r.job_count} postings (${pct(r.share)})` + (r.avg_salary_usd ? ` · avg ${money(r.avg_salary_usd)}` : ""); }));
+
+  drawChart("sourceChart", {
+    type: "doughnut",
+    data: { labels: bySource.map(r => r.key), datasets: [{ data: bySource.map(r => r.job_count),
+            backgroundColor: palette(), borderWidth: 0, hoverOffset: 5 }] },
+    options: { maintainAspectRatio: false, cutout: "62%",
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 9, padding: 9, font: { size: 11 } } } } }
+  });
+
+  drawChart("countryChart", barConfig(byCountry, r => r.key, r => r.job_count, null, 1));
+}
+
+function barConfig(rows, labelFn, valueFn, tooltipFn, colorIndex = 0) {
+  return {
+    type: "bar",
+    data: { labels: rows.map(labelFn), datasets: [{ data: rows.map(valueFn),
+            backgroundColor: palette()[colorIndex], borderRadius: 3, barThickness: 14 }] },
+    options: { indexAxis: "y", maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: tooltipFn ? { callbacks: { label: tooltipFn } } : {} },
+      scales: { x: { grid: { color: Chart.defaults.borderColor }, border: { display: false } },
+                y: { grid: { display: false }, border: { display: false } } } }
+  };
+}
+
+/* ================= jobs ================= */
+async function loadJobs() {
+  renderQuickChips();
+  renderActiveFilters();
+  const params = filterParams();
+  const useMatch = state.byMatch && profile.length > 0;
+
+  const listParams = new URLSearchParams([...params,
+    ["limit", String(state.limit)], ["offset", String(state.page * state.limit)],
+    ["sort", useMatch ? "match" : $("fSort").value]]);
+  if (useMatch) profile.forEach(s => listParams.append("have", s));
+
+  const page = state.savedOnly ? await fetchSaved() : await api("/api/jobs", listParams);
+  renderJobs(page, useMatch);
+}
+
+async function fetchSaved() {
+  if (!saved.length) return { total: 0, items: [] };
+  const items = (await Promise.all(saved.slice(0, 60).map(id =>
+    api(`/api/jobs/${id}`).catch(() => null)))).filter(Boolean);
+  return { total: items.length, items };
+}
+
+function renderJobs(page, useMatch) {
+  state.total = page.total;
+  $("jobCount").textContent = `${page.total.toLocaleString()} matching`;
+  $("matchHead").style.display = useMatch ? "" : "none";
+  $("matchBtn").classList.toggle("on", state.byMatch);
+
+  $("jobTable").innerHTML = page.items.length ? page.items.map(j => {
+    const loc = j.is_remote ? (j.location_raw ? esc(j.location_raw) + " · Remote" : "Remote")
+                            : (j.location_raw ? esc(j.location_raw) : "-");
+    const isSaved = saved.includes(j.id);
+    const sal = (j.salary_min_usd || j.salary_max_usd)
+      ? `<span class="money">${(j.salary_min_usd && j.salary_max_usd && j.salary_min_usd !== j.salary_max_usd)
+            ? money(j.salary_min_usd) + "-" + money(j.salary_max_usd) : money(j.salary_min_usd || j.salary_max_usd)}</span>`
+      : `<span class="muted">-</span>`;
+    const match = useMatch && j.match_score != null
+      ? `<td><div style="display:flex; align-items:center; gap:7px">
+           <div class="bar"><span style="width:${Math.round(j.match_score * 100)}%"></span></div>
+           <span class="num" style="font-size:12px" title="${j.matched_skills} of ${j.required_skills} skills"
+             >${j.matched_skills}/${j.required_skills}</span></div></td>`
+      : (useMatch ? `<td class="muted">-</td>` : "");
+    return `<tr class="row clickable" data-id="${j.id}">
+      <td><button class="star${isSaved ? " on" : ""}" data-save="${j.id}" title="Save">
+        <svg class="i sm" ${isSaved ? 'fill="currentColor"' : ""}><use href="#i-star"/></svg></button></td>
+      ${match}
+      <td><div class="jtitle">${esc(j.title)}</div></td>
+      <td class="jco">${esc(j.company_name)}</td>
+      <td class="muted" style="font-size:12.5px">${loc}</td>
+      <td>${j.seniority ? `<span class="tag">${j.seniority}</span>` : `<span class="muted">-</span>`}</td>
+      <td class="num">${sal}</td>
+      <td><span class="tag">${j.source}</span></td>
+      <td><a class="apply" href="${esc(j.apply_url || j.url)}" target="_blank" rel="noopener noreferrer"
+             data-apply="1">Apply ${icon("ext")}</a></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="9" class="empty">No postings match these filters.</td></tr>`;
+
+  $("jobTable").querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", (e) => {
+    if (e.target.closest("[data-save]")) { toggleSave(Number(e.target.closest("[data-save]").dataset.save)); return; }
+    if (e.target.closest("[data-apply]")) return;
+    openDrawer(Number(tr.dataset.id));
+  }));
+
+  const from = page.total ? state.page * state.limit + 1 : 0;
+  const to = state.savedOnly ? page.total : Math.min((state.page + 1) * state.limit, page.total);
+  $("pageInfo").textContent = state.savedOnly
+    ? `${page.total} saved posting${page.total === 1 ? "" : "s"}`
+    : `Showing ${from} to ${to} of ${page.total.toLocaleString()}`;
+  $("prevBtn").disabled = state.page === 0 || state.savedOnly;
+  $("nextBtn").disabled = state.savedOnly || to >= page.total;
+}
+
+function toggleSave(id) {
+  const i = saved.indexOf(id);
+  if (i >= 0) { saved.splice(i, 1); toast("Removed from saved"); }
+  else { saved.push(id); toast("Saved"); }
+  put(KEY.saved, saved);
+  loadJobs();
+}
+
+/* ================= skills ================= */
+async function loadSkills() {
+  const params = filterParams();
+  const skills = await api("/api/analytics/skills", new URLSearchParams([...params, ["limit", "40"]]));
+  $("skillTable").innerHTML = skills.length ? skills.map(r => `
+    <tr class="row clickable" data-slug="${r.slug}" data-name="${esc(r.name)}">
+      <td><strong>${esc(r.name)}</strong></td><td class="muted">${r.category}</td>
+      <td class="num">${r.job_count.toLocaleString()}</td><td class="num">${pct(r.share)}</td>
+      <td class="num">${money(r.avg_salary_usd)}</td>
+      <td><span class="tag clickable" data-filter="${r.slug}">see jobs</span></td>
+    </tr>`).join("") : `<tr><td colspan="6" class="empty">No skills matched.</td></tr>`;
+
+  $("skillTable").querySelectorAll("tr[data-slug]").forEach(tr => tr.addEventListener("click", (e) => {
+    if (e.target.dataset.filter) {
+      state.skill = e.target.dataset.filter; state.page = 0;
+      location.hash = "#/jobs";
+      return;
+    }
+    loadCooccurrence(tr.dataset.slug, tr.dataset.name);
+  }));
+  await refreshTrend();
+}
+
+async function loadCooccurrence(slug, name) {
+  $("coocTitle").textContent = `Paired with ${name}`;
+  const rows = await api(`/api/analytics/skills/${slug}/cooccurrence`, new URLSearchParams({ limit: "14" }));
+  $("coocTable").innerHTML = rows.length ? rows.map(r =>
+    `<tr class="row"><td>${esc(r.name)}</td><td class="num">${r.job_count.toLocaleString()}</td><td class="num">${pct(r.share)}</td></tr>`
+  ).join("") : `<tr><td colspan="3" class="empty">No co-occurring skills.</td></tr>`;
+}
+
+async function refreshTrend() {
+  const slugs = $("trendSkills").value.split(",").map(s => s.trim()).filter(Boolean);
+  const params = new URLSearchParams({ days: "90", bucket_days: "7" });
+  slugs.forEach(s => params.append("skill", s));
+  const data = await api("/api/analytics/trends", params);
+  drawChart("trendChart", {
+    type: "line",
+    data: { labels: data.labels, datasets: Object.entries(data.series).map(([slug, values], i) => ({
+      label: slug, data: values, borderColor: palette()[i % palette().length],
+      backgroundColor: palette()[i % palette().length] + "22",
+      tension: .34, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: true })) },
+    options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { boxWidth: 8, usePointStyle: true, font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true, grid: { color: Chart.defaults.borderColor }, border: { display: false } },
+                x: { grid: { display: false }, border: { display: false } } } }
+  });
+}
+
+/* ================= compensation ================= */
+async function loadPay() {
+  const params = filterParams();
+  const [dist, bands, skills] = await Promise.all([
+    api("/api/analytics/salary/distribution", params),
+    api("/api/analytics/salary/seniority", params),
+    api("/api/analytics/skills", new URLSearchParams([...params, ["limit", "40"]])),
+  ]);
+
+  $("payN").textContent = `${dist.count.toLocaleString()} postings with disclosed pay`;
+  const p = dist.percentiles || {};
+  $("payBand").innerHTML = dist.count ? [
+    ["10th", p.p10], ["25th", p.p25], ["Median", p.p50], ["75th", p.p75], ["90th", p.p90]
+  ].map(([k, v], i) => `<div class="${i === 2 ? "mid" : ""}"><div class="k">${k} percentile</div>
+      <div class="v">${money(v)}</div></div>`).join("") : `<div class="empty">No salary data for these filters.</div>`;
+
+  drawChart("distChart", {
+    type: "bar",
+    data: { labels: dist.buckets.map(b => "$" + Math.round(b.from / 1000) + "k"),
+            datasets: [{ data: dist.buckets.map(b => b.count), backgroundColor: palette()[0], borderRadius: 3 }] },
+    options: { maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        title: (items) => { const b = dist.buckets[items[0].dataIndex]; return money(b.from) + " to " + money(b.to); },
+        label: (c) => `${c.raw} postings` } } },
+      scales: { y: { grid: { color: Chart.defaults.borderColor }, border: { display: false } },
+                x: { grid: { display: false }, border: { display: false } } } }
+  });
+
+  drawChart("salaryChart", {
+    type: "bar",
+    data: { labels: bands.map(b => b.seniority), datasets: [{ data: bands.map(b => b.avg_salary_usd),
+            backgroundColor: palette()[3], borderRadius: 3, barThickness: 15 }] },
+    options: { indexAxis: "y", maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        afterLabel: (c) => `n = ${bands[c.dataIndex].salary_sample_size}` } } },
+      scales: { x: { ticks: { callback: (v) => "$" + Math.round(v / 1000) + "k" },
+                     grid: { color: Chart.defaults.borderColor }, border: { display: false } },
+                y: { grid: { display: false }, border: { display: false } } } }
+  });
+
+  const paid = skills.filter(s => s.avg_salary_usd).sort((a, b) => b.avg_salary_usd - a.avg_salary_usd).slice(0, 20);
+  $("paySkillTable").innerHTML = paid.length ? paid.map(s => `
+    <tr class="row"><td><strong>${esc(s.name)}</strong></td><td class="muted">${s.category}</td>
+    <td class="num">${s.job_count.toLocaleString()}</td><td class="num money">${money(s.avg_salary_usd)}</td>
+    <td class="num muted">${s.salary_sample_size}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No salary data for these filters.</td></tr>`;
+}
+
+/* ================= skill gap ================= */
+function renderProfile() {
+  $("profileChips").innerHTML = profile.length ? profile.map(slug => {
+    const s = taxonomy.find(t => t.slug === slug);
+    return `<span class="tagx"><b>${esc(s ? s.name : slug)}</b>
+      <button data-drop="${slug}">${icon("close", "i sm")}</button></span>`;
+  }).join("") : `<span class="muted" style="font-size:13px">No skills yet. Add a few to get recommendations.</span>`;
+
+  $("profileChips").querySelectorAll("[data-drop]").forEach(b => b.addEventListener("click", () => {
+    profile = profile.filter(s => s !== b.dataset.drop);
+    put(KEY.profile, profile);
+    loadGap();
+  }));
+}
+
+function addSkillFromInput() {
+  const raw = $("skillInput").value.trim().toLowerCase();
+  if (!raw) return;
+  const found = taxonomy.find(t => t.name.toLowerCase() === raw || t.slug === raw);
+  if (!found) { toast(`"${$("skillInput").value.trim()}" is not in the taxonomy`); return; }
+  if (!profile.includes(found.slug)) {
+    profile.push(found.slug);
+    put(KEY.profile, profile);
+  }
+  $("skillInput").value = "";
+  loadGap();
+}
+
+async function loadGap() {
+  renderProfile();
+  const params = new URLSearchParams({ threshold: $("thresholdSel").value, limit: "14" });
+  profile.forEach(s => params.append("have", s));
+  const gap = await api("/api/analytics/skill-gap", params);
+
+  $("gapStats").innerHTML = [
+    ["Postings analysed", gap.analysed_jobs.toLocaleString()],
+    ["You qualify for", `${gap.qualified_now.toLocaleString()} (${pct(gap.qualified_share)})`],
+    ["Within 2 skills", gap.within_reach.toLocaleString()],
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  $("gapTable").innerHTML = gap.recommendations.length ? gap.recommendations.map(r => `
+    <tr class="row">
+      <td><strong>${esc(r.name)}</strong></td>
+      <td class="num"><span class="delta up">${icon("up")}+${r.unlocks}</span></td>
+      <td class="num">${r.avg_salary_usd ? `<span class="money">${money(r.avg_salary_usd)}</span>
+        <span class="muted" style="font-size:11px"> n=${r.salary_sample_size}</span>` : `<span class="muted">-</span>`}</td>
+      <td class="num muted">${r.total_demand.toLocaleString()}</td>
+      <td style="display:flex; gap:6px">
+        <button class="btn-ghost" data-add="${r.slug}" style="padding:5px 10px">${icon("plus")} I know this</button>
+        <button class="btn-ghost" data-jobs="${r.slug}" style="padding:5px 10px">Jobs</button>
+      </td>
+    </tr>`).join("")
+    : `<tr><td colspan="5" class="empty">${profile.length
+        ? "Nothing new would cross the threshold. Try lowering it."
+        : "Add a few skills above to see what to learn next."}</td></tr>`;
+
+  $("gapTable").querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => {
+    if (!profile.includes(b.dataset.add)) { profile.push(b.dataset.add); put(KEY.profile, profile); }
+    loadGap();
+  }));
+  $("gapTable").querySelectorAll("[data-jobs]").forEach(b => b.addEventListener("click", () => {
+    state.skill = b.dataset.jobs; state.page = 0; location.hash = "#/jobs";
+  }));
+}
+
+/* ================= pipeline ================= */
+async function loadPipeline() {
+  const [runs, sources] = await Promise.all([
+    api("/api/analytics/runs", new URLSearchParams({ limit: "25" })),
+    api("/api/sources"),
+  ]);
+
+  $("sourceTable").innerHTML = sources.map(s => `
+    <tr class="row"><td><strong>${esc(s.display_name)}</strong></td>
+    <td class="muted" style="font-size:12.5px">${esc(s.attribution || "")}</td>
+    <td class="num">${s.job_count.toLocaleString()}</td>
+    <td><a href="${s.homepage}" target="_blank" rel="noopener" class="tag clickable">visit ${icon("ext")}</a></td></tr>`).join("");
+
+  $("runTable").innerHTML = runs.length ? runs.map(r => `
+    <tr class="row">
+      <td class="muted">${(r.started_at || "").slice(0, 16).replace("T", " ")}</td>
+      <td>${r.source}</td>
+      <td style="color:${r.status === "ok" ? "var(--pos)" : "var(--neg)"}">${r.status}</td>
+      <td class="num">${r.fetched.toLocaleString()}</td>
+      <td class="num">${r.created.toLocaleString()}</td>
+      <td class="num">${r.updated.toLocaleString()}</td>
+      <td class="num">${r.duplicates.toLocaleString()}</td>
+      <td class="num">${r.http_requests}</td>
+      <td class="num muted">${r.bytes_downloaded ? Math.round(r.bytes_downloaded / 1024) + " KB" : "cached"}</td>
+      <td class="num">${r.duration_seconds != null ? r.duration_seconds + "s" : "-"}</td>
+    </tr>`).join("") : `<tr><td colspan="10" class="empty">No crawls recorded yet.</td></tr>`;
+}
+
+/* ================= drawer ================= */
+let drawerJob = null;
+
+async function openDrawer(id) {
+  const job = await api(`/api/jobs/${id}`);
+  drawerJob = job;
+  $("dTitle").textContent = job.title;
+  $("dCompany").textContent = [job.company_name, job.location_raw].filter(Boolean).join(" · ");
+  $("dApply").href = job.apply_url || job.url;
+  updateSaveButton();
+
+  const salary = (job.salary_min_usd || job.salary_max_usd)
+    ? ((job.salary_min_usd && job.salary_max_usd && job.salary_min_usd !== job.salary_max_usd)
+        ? money(job.salary_min_usd) + "-" + money(job.salary_max_usd) : money(job.salary_min_usd || job.salary_max_usd))
+      + (job.salary_currency && job.salary_currency !== "USD" ? ` (from ${job.salary_currency})` : "")
+    : "Not disclosed";
+
+  const known = new Set(profile);
+  const meta = [["Level", job.seniority || "unspecified"], ["Type", (job.employment_type || "-").replace("_", " ")],
+                ["Remote", job.is_remote ? "Yes" : "No"], ["Salary", salary],
+                ["Country", job.country || "-"], ["Posted", (job.posted_at || job.first_seen_at || "").slice(0, 10)]];
+
+  $("drawerBody").innerHTML = `
+    <div class="meta-grid">${meta.map(([k, v]) =>
+      `<div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("")}</div>
+    ${job.skills?.length ? `<h3>Skills detected (${job.skills.length})</h3><div>${job.skills.map(s =>
+      `<span class="tag" style="margin:0 5px 5px 0; ${known.has(s.slug)
+        ? "background:var(--brand-soft); color:var(--brand); border-color:transparent" : ""}"
+        title="matched via ${s.matched_via}">${esc(s.name)}</span>`).join("")}</div>
+      ${profile.length ? `<div class="muted" style="font-size:12px; margin-top:8px">Highlighted are in your stack.</div>` : ""}` : ""}
+    ${job.also_posted_on?.length ? `<h3>Also posted on</h3>${job.also_posted_on.map(p =>
+      `<a href="${esc(p.url)}" target="_blank" rel="noopener" class="tag clickable" style="margin-right:6px">${p.source} ${icon("ext")}</a>`).join("")}` : ""}
+    <h3>Description</h3><div class="desc">${esc(job.description_text || "No description captured.")}</div>`;
+
+  $("drawer").classList.add("open");
+  $("scrim").classList.add("open");
+}
+
+function updateSaveButton() {
+  if (!drawerJob) return;
+  const on = saved.includes(drawerJob.id);
+  $("dSave").querySelector("span").textContent = on ? "Saved" : "Save";
+  $("dSave").classList.toggle("on", on);
+}
+
+function closeDrawer() {
+  $("drawer").classList.remove("open");
+  $("scrim").classList.remove("open");
+}
+
+/* ================= wiring ================= */
+$("closeDrawer").addEventListener("click", closeDrawer);
+$("scrim").addEventListener("click", closeDrawer);
+$("dSave").addEventListener("click", () => { if (drawerJob) { toggleSave(drawerJob.id); updateSaveButton(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeDrawer();
+  if (e.key === "/" && !["INPUT", "SELECT"].includes(document.activeElement.tagName)) {
+    e.preventDefault();
+    if (currentRoute().filters) $("fSearch").focus();
+  }
+});
+
+let searchTimer;
+$("fSearch").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.page = 0; route(); }, 350);
+});
+["fSource", "fSeniority", "fCountry", "fDays", "fRemote", "fSalary", "fSort"].forEach(id =>
+  $(id).addEventListener("change", () => { state.page = 0; state.savedOnly = false; route(); }));
+$("resetBtn").addEventListener("click", () => {
+  ["fSearch", "fSource", "fSeniority", "fCountry"].forEach(id => $(id).value = "");
+  $("fDays").value = "90"; $("fRemote").checked = false; $("fSalary").checked = false;
+  state.skill = null; state.savedOnly = false; state.page = 0; route();
+});
+$("prevBtn").addEventListener("click", () => { if (state.page > 0) { state.page--; loadJobs(); } });
+$("nextBtn").addEventListener("click", () => {
+  if ((state.page + 1) * state.limit < state.total) { state.page++; loadJobs(); }
+});
+$("matchBtn").addEventListener("click", () => {
+  if (!profile.length) { toast("Add skills on the Skill Gap page first"); location.hash = "#/gap"; return; }
+  state.byMatch = !state.byMatch; state.page = 0; loadJobs();
+});
+$("trendSkills").addEventListener("change", refreshTrend);
+$("addSkill").addEventListener("click", addSkillFromInput);
+$("skillInput").addEventListener("keydown", (e) => { if (e.key === "Enter") addSkillFromInput(); });
+$("thresholdSel").addEventListener("change", loadGap);
+
+$("exportBtn").addEventListener("click", async () => {
+  const page = await api("/api/jobs", new URLSearchParams([...filterParams(), ["limit", "200"]]));
+  const cols = ["title", "company_name", "location_raw", "country", "is_remote", "seniority",
+                "employment_type", "salary_min_usd", "salary_max_usd", "source", "url"];
+  const csv = [cols.join(",")].concat(page.items.map(j =>
+    cols.map(c => `"${String(j[c] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = "jobs.csv"; a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`Exported ${page.items.length} postings`);
+});
+
+/* ================= boot ================= */
+async function boot() {
+  applyTheme(store(KEY.theme, matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+  const [health, filters, skills] = await Promise.all([
+    api("/api/health"), api("/api/filters"), api("/api/skills"),
+  ]);
+  taxonomy = skills;
+  $("skillList").innerHTML = skills.map(s => `<option value="${esc(s.name)}">`).join("");
+  $("statusText").textContent =
+    `${health.total_jobs.toLocaleString()} postings · ${health.database}` +
+    (health.last_run_at ? ` · crawled ${health.last_run_at.slice(0, 16).replace("T", " ")}` : "");
+
+  const fill = (el, values) => {
+    el.innerHTML = el.querySelector("option").outerHTML +
+      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  };
+  fill($("fSource"), filters.sources);
+  fill($("fSeniority"), filters.seniority);
+  fill($("fCountry"), filters.countries);
+
+  api("/api/sources").then(sources => {
+    $("attrib").innerHTML = sources.map(s =>
+      `<a href="${s.homepage}" target="_blank" rel="noopener">${esc(s.display_name)}</a> (${s.job_count.toLocaleString()})`
+    ).join(" · ");
+  });
+
+  await route();
+}
+
+boot().catch(err => { console.error(err); $("statusText").textContent = "API unreachable"; });
+</script>
+</body>
+</html>

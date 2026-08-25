@@ -1,0 +1,54 @@
+name: Scheduled crawl
+
+# Free hosting tiers give you one short-lived web process and no background
+# worker, so the scheduler cannot live next to the API. GitHub Actions runs it
+# instead: the crawl happens here, writes straight to the hosted database, and
+# the web service stays a stateless reader.
+#
+# Setup: add a DATABASE_URL repository secret pointing at your Postgres
+# (Settings > Secrets and variables > Actions), then enable Actions.
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # 04:17 UTC daily, off the hour to avoid the stampede
+  workflow_dispatch:        # and a manual "Run workflow" button
+
+concurrency:
+  group: crawl
+  cancel-in-progress: false   # never let two crawls write at once
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[postgres]"
+
+      - name: Crawl every enabled source
+        env:
+          JMI_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Identify the crawler honestly. Point the contact at something real.
+          JMI_USER_AGENT: >-
+            JobMarketIntel/1.0 (+https://github.com/${{ github.repository }};
+            contact: ${{ vars.CONTACT_EMAIL || 'you@example.com' }})
+          # Datacentre IPs get rate limited harder than home connections.
+          JMI_RATE_LIMIT_PER_SECOND: "0.5"
+          JMI_ARCHIVE_RAW: "false"     # the runner is thrown away anyway
+        run: |
+          jmi init
+          jmi scrape
+
+      - name: Report what landed
+        if: always()
+        env:
+          JMI_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: jmi stats

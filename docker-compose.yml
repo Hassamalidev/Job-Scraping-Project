@@ -1,0 +1,50 @@
+name: job-market-intel
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jmi
+      POSTGRES_PASSWORD: jmi
+      POSTGRES_DB: jmi
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jmi -d jmi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: .
+    environment:
+      JMI_DATABASE_URL: postgresql+psycopg://jmi:jmi@db:5432/jmi
+      JMI_USER_AGENT: ${JMI_USER_AGENT:-JobMarketIntel/1.0 (+https://github.com/yourname/job-market-intel)}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - jobdata:/app/data
+    restart: unless-stopped
+
+  # Crawls on a timer against the same database.
+  scheduler:
+    build: .
+    command: ["jmi", "schedule"]
+    environment:
+      JMI_DATABASE_URL: postgresql+psycopg://jmi:jmi@db:5432/jmi
+      JMI_SCRAPE_INTERVAL_MINUTES: ${JMI_SCRAPE_INTERVAL_MINUTES:-360}
+      JMI_USER_AGENT: ${JMI_USER_AGENT:-JobMarketIntel/1.0 (+https://github.com/yourname/job-market-intel)}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - jobdata:/app/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  jobdata:

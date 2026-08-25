@@ -1,0 +1,16 @@
+.venv/
+data/
+export/
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.db
+*.db-wal
+*.db-shm
+.env
+docs/
+tests/
+smoke.py
+ingest_test.py

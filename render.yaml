@@ -1,0 +1,40 @@
+# Render Blueprint. Point Render at this repo (New > Blueprint) and it creates
+# the service from this file instead of you clicking through the dashboard.
+#
+# Deliberately NOT declared here:
+#   * a database  - Render's free Postgres expires after a fixed window, so the
+#                   database lives on Neon and is passed in as a secret.
+#   * a worker    - Render background workers and cron jobs are paid features.
+#                   The crawl runs on GitHub Actions instead, see
+#                   .github/workflows/crawl.yml
+#
+# The web service is a stateless reader. It never crawls, so it stays inside the
+# free tier's memory budget and starts fast.
+
+services:
+  - type: web
+    name: job-market-intel
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Render injects $PORT; the Dockerfile reads it. Do not hardcode a port.
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # The only value you have to supply. sync: false means "prompt me in the
+      # dashboard", so the password never lands in git.
+      #   postgresql+psycopg://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
+      - key: JMI_DATABASE_URL
+        sync: false
+
+      # Everything below has a working default; these are here to be explicit,
+      # not because the service fails without them.
+      - key: JMI_LOG_LEVEL
+        value: INFO
+      # Nothing on the web service crawls, but this guarantees it never writes
+      # a payload archive to an ephemeral disk.
+      - key: JMI_ARCHIVE_RAW
+        value: "false"
+      # Deliberately absent: JMI_USER_AGENT. It is only read when building an
+      # HTTP client to crawl with, and the web service never crawls. It belongs
+      # on the GitHub Actions workflow instead.
