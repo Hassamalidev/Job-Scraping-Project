@@ -6,11 +6,72 @@ skill taxonomy and salaries parsed into comparable annual USD.
 
 It ships as a CLI, a documented REST API, and a dashboard.
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Sources](#sources)
+- [Usage](#usage): [CLI](#cli) · [API](#api) · [Dashboard](#dashboard)
+- [Sample output](#sample-output)
+- [Engineering notes](#engineering-notes)
+- [Data quality: known limits](#data-quality-known-limits)
+- [Ethics and compliance](#ethics-and-compliance)
+- [Development](#development): [Testing](#testing) · [Project layout](#project-layout) · [Adding a source](#adding-a-source)
+- [Licence](#licence)
+
+## Quick start
+
+```bash
+python -m venv .venv && .venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
+pip install -e ".[dev]"
+
+jmi init            # create the schema, seed the skill taxonomy
+jmi scrape          # crawl every enabled source (~12 min, ~4,000 postings)
+jmi stats           # headline metrics
+jmi serve           # dashboard at http://127.0.0.1:8000
+```
+
+### Docker
+
+With Docker (Postgres + API + a scheduler that re-crawls every 6 hours):
+
+```bash
+docker compose up --build
+```
+
+### Deploying
+
+See [DEPLOY.md](DEPLOY.md) to put it online for free.
+
+## Configuration
+
+Every setting is optional: the defaults run locally against SQLite. To change
+one, copy [.env.example](.env.example) to `.env`. All variables share the
+`JMI_` prefix.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `JMI_DATABASE_URL` | `sqlite:///data/jobs.db` | Storage. Point it at PostgreSQL with `postgresql+psycopg://…` (install the `postgres` extra) |
+| `JMI_USER_AGENT` | project placeholder | Identifies the crawler. Set a real contact address before running |
+| `JMI_RATE_LIMIT_PER_SECOND` | `0.75` | Per-domain request rate |
+| `JMI_RESPECT_ROBOTS` | `true` | Evaluate `robots.txt` before crawling a host |
+| `JMI_ENABLED_SOURCES` | all eight | Which scrapers `jmi scrape` runs |
+| `JMI_GREENHOUSE_BOARDS`, `JMI_LEVER_BOARDS` | see `.env.example` | Company boards to crawl |
+| `JMI_SCRAPE_INTERVAL_MINUTES` | `360` | Scheduler interval |
+| `JMI_STALE_AFTER_DAYS` | `45` | Age at which unseen postings are retired |
+| `JMI_ARCHIVE_RAW` | `true` | Keep raw payloads for offline replay |
+
+Per-source caps (`JMI_HN_THREADS`, `JMI_MUSTAKBIL_MAX_JOBS`,
+`JMI_HIMALAYAS_MAX_JOBS`, `JMI_ARBEITNOW_PAGES`, …) are listed in
+[.env.example](.env.example).
+
+## Architecture
+
 ```
               RemoteOK   WeWorkRemotely   HN "Who is hiring"   Greenhouse boards
    sources    Lever      Mustakbil (PK)   Himalayas            Arbeitnow (EU)
               JSON API · RSS · free text · sitemap+JSON-LD · cursor-paginated JSON
-                                          │
                                                        │
                     ┌──────────────────────────────────▼───────────────────────────────────┐
    crawl layer      │  robots.txt · per-domain rate limit · conditional GET (ETag/304)     │
@@ -34,9 +95,9 @@ It ships as a CLI, a documented REST API, and a dashboard.
                     └──────────────────┴─────────────────────────┴──────────────────────────┘
 ```
 
----
+## Sources
 
-## Why these eight sources
+### Why these eight
 
 Each one breaks in a different way, which is the point. A scraper that only
 handles clean JSON hasn't been tested.
@@ -52,29 +113,111 @@ handles clean JSON hasn't been tested.
 | **Himalayas** | Cursor JSON API | ~100k remote roles with real salary numbers, currency and period, which lifts the disclosure rate. |
 | **Arbeitnow** (Europe) | Paginated JSON | Geographic ballast. Without European postings every salary aggregate skews to one market. |
 
----
+### Deliberately left out
 
-## Quick start
+Two well-known boards were evaluated and rejected, which matters more than the
+list of ones included:
+
+- **rozee.pk** (Pakistan's largest board) sits behind a Cloudflare bot
+  challenge. Getting past it would mean evading bot protection, so it is out.
+- **Remotive** and **Jobicy** both serve their `robots.txt` from behind the same
+  challenge, so their crawl policy cannot be read at all. A crawler that cannot
+  verify permission should not assume it.
+
+Every included source has a readable, permissive `robots.txt`, or in Mustakbil's
+case a sitemap that explicitly invites crawling.
+
+## Usage
+
+### CLI
 
 ```bash
-python -m venv .venv && .venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
-pip install -e ".[dev]"
-
-jmi init            # create the schema, seed the skill taxonomy
-jmi scrape          # crawl every enabled source (~12 min, ~4,000 postings)
-jmi stats           # headline metrics
-jmi serve           # dashboard at http://127.0.0.1:8000
+jmi init                        # schema + skill taxonomy
+jmi scrape                      # crawl all enabled sources
+jmi scrape -s hackernews        # crawl one source
+jmi reprocess                   # re-enrich stored postings (no network)
+jmi stats                       # corpus overview, source split, pay by seniority
+jmi skills --limit 20           # ranked skill demand with average salary
+jmi skills --category ml        # filter to one category
+jmi runs                        # crawl history: requests, bytes, failures, timing
+jmi export --format csv         # dump to CSV/JSON for pandas or Excel
+jmi serve                       # API + dashboard
+jmi schedule --every 360        # crawl on a timer
+jmi db check                    # connect to the configured database and report what is there
+jmi db reset --yes              # drop and recreate
 ```
 
-See [DEPLOY.md](DEPLOY.md) to put it online for free.
+### API
 
-With Docker (Postgres + API + a scheduler that re-crawls every 6 hours):
+Interactive docs at `/docs` (OpenAPI is generated from the response models).
 
-```bash
-docker compose up --build
+| Endpoint | Returns |
+|---|---|
+| `GET /api/jobs` | Paged search filtered by skill (AND), source, seniority, country, remote, salary disclosed, recency. Pass `have=` to score each posting against a profile and `sort=match` to rank by it |
+| `GET /api/jobs/{id}` | One posting with extracted skills and its cross-posts on other boards |
+| `GET /api/analytics/overview` | Headline counters |
+| `GET /api/analytics/skills` | Ranked demand with the salary attached to each skill |
+| `GET /api/analytics/skills/{slug}/cooccurrence` | What that skill is paired with |
+| `GET /api/analytics/trends` | Demand per week, one series per skill |
+| `GET /api/analytics/salary/seniority` | Pay bands |
+| `GET /api/analytics/breakdown/{dimension}` | Counts by source, country, region, seniority, company |
+| `GET /api/analytics/skill-gap` | Marginal analysis: which skill unlocks the most jobs |
+| `GET /api/analytics/momentum` | Rising and falling skills across two windows |
+| `GET /api/analytics/salary/distribution` | Percentiles and histogram |
+| `GET /api/skills` | The full skill taxonomy |
+| `GET /api/analytics/runs` | Crawl audit trail |
+| `GET /api/health` | Liveness + row count |
+
+Every filter applies to the analytics endpoints too, so
+`/api/analytics/skills?remote_only=true&country=Germany` answers "what do remote
+German employers ask for" without any new code.
+
+### Dashboard
+
+Served at `/` by `jmi serve`. Six sections behind a nav bar, not one endless page.
+
+| Section | What it answers |
+|---|---|
+| **Overview** | Headline metrics, plus which skills are gaining and losing ground |
+| **Jobs** | Search the corpus, apply on the source site, save what you like |
+| **Skills** | Demand, pay and co-occurrence: what a skill travels with |
+| **Compensation** | Percentile bands and the distribution shape |
+| **Skill Gap** | What to learn next, given what you already know |
+| **Pipeline** | Crawl telemetry: what ran, what it fetched, what it cost |
+
+#### The part that is not just another dashboard
+
+Most job dashboards describe the market. These three answer *"what does it mean
+for me"*, which is the question a job seeker actually has.
+
+**Skill gap analysis**: enter your stack and it runs a marginal analysis. For
+every skill you lack, how many *additional* postings would you qualify for by
+learning that one thing? Not raw popularity: the most common skill in the
+corpus is useless advice if you already have it. Each recommendation carries the
+salary of the jobs it unlocks and the sample size behind it.
+
+```
+Profile: python, sql            1,562 postings analysed
+                                you qualify for 51 (3.3%) · 760 within two skills
+
+  learn Salesforce     unlocks +73 jobs   avg $223,831
+  learn Security       unlocks +33 jobs   avg $241,408
+  learn System Design  unlocks +30 jobs   avg $311,578
 ```
 
-### Sample output
+**Match scoring**: every posting is scored against your stack (share of its
+required skills you cover) and the job list can be ranked by it.
+
+**Skill momentum**: what is rising and falling, measured on *posting dates*
+rather than crawl time. Crawl time would make every skill appear to spike on the
+day the crawler first ran. Raw counts ship next to the percentage, because
+"+800%" from a base of one is not a trend.
+
+Everything else is table stakes: shared filters that drive the charts *and* the
+analytics endpoints, saved jobs, CSV export, debounced search, pagination,
+keyboard shortcuts, and a light/dark theme that persists.
+
+## Sample output
 
 Real numbers from one crawl of all eight sources:
 
@@ -107,14 +250,12 @@ Salaries skew high because Greenhouse boards are weighted toward large US tech
 employers, which is a sampling bias rather than a market finding. This is exactly why sample
 sizes ship with every aggregate.
 
----
-
-## What is actually hard here
+## Engineering notes
 
 The scraping is the easy part. These are the problems that took the real work,
 each solved in one focused module:
 
-### 1. Cross-source deduplication ([`pipeline/dedupe.py`](src/jmi/pipeline/dedupe.py))
+### Cross-source deduplication ([`pipeline/dedupe.py`](src/jmi/pipeline/dedupe.py))
 
 The same role appears on RemoteOK, We Work Remotely *and* the company's own
 Greenhouse board. Counting it three times inflates every demand number. Two passes:
@@ -130,7 +271,7 @@ Duplicates keep their own row and point at the canonical one via
 `duplicate_of_id`, so "which boards carried this role" is still answerable and
 nothing is destroyed.
 
-### 2. Salary parsing ([`pipeline/salary.py`](src/jmi/pipeline/salary.py))
+### Salary parsing ([`pipeline/salary.py`](src/jmi/pipeline/salary.py))
 
 Compensation is the most valuable field and the worst formatted. All of these
 resolve to a comparable annual USD range:
@@ -157,7 +298,7 @@ holding it to a US-shaped floor would silently discard *every* salary from a
 lower-income market. PKR 25,000/month is a real Pakistani wage worth about
 $1,080 a year, and it belongs in the dataset.
 
-### 3. Ambiguous skill names ([`pipeline/skills.py`](src/jmi/pipeline/skills.py))
+### Ambiguous skill names ([`pipeline/skills.py`](src/jmi/pipeline/skills.py))
 
 "Go", "R", "C" and "Rust" are programming languages *and* ordinary English.
 A naive keyword match tags "Come **rust**-proof our **go**-to-market strategy"
@@ -174,7 +315,7 @@ One more subtlety: scraping Figma's own board made *Figma* the most in-demand
 skill in the dataset, because every Figma posting mentions Figma. Employer
 self-mentions are now suppressed.
 
-### 4. Being a well-behaved crawler ([`scrapers/base.py`](src/jmi/scrapers/base.py))
+### Being a well-behaved crawler ([`scrapers/base.py`](src/jmi/scrapers/base.py))
 
 - **robots.txt** is fetched and evaluated per host before the first request, and
   a `Crawl-delay` directive tightens the rate limiter automatically (RemoteOK
@@ -187,7 +328,7 @@ self-mentions are now suppressed.
 - **Raw payload archive** so a parser change can be replayed offline against the
   exact bytes that caused a bug.
 
-### 5. Ingest that survives bad data ([`pipeline/ingest.py`](src/jmi/pipeline/ingest.py))
+### Ingest that survives bad data ([`pipeline/ingest.py`](src/jmi/pipeline/ingest.py))
 
 - Each posting is written inside a **SAVEPOINT**. One malformed row rolls back
   only itself instead of discarding the whole batch.
@@ -199,7 +340,7 @@ self-mentions are now suppressed.
   empty fetch almost always means the source broke, and wiping the dataset on a
   transient failure is far worse than carrying stale rows for one cycle.
 
-### 6. Fixing data quality without re-crawling
+### Fixing data quality without re-crawling
 
 Because descriptions and raw payloads are stored, improving a parser is a local
 replay rather than a re-crawl. `jmi reprocess` re-runs normalisation, salary
@@ -218,99 +359,6 @@ by sampling the text that actually matched:
 All three now require qualifying context ("Application Security Engineer",
 "Microsoft Excel", "PySpark"/"Spark SQL"). After `jmi reprocess`, Python takes
 the top slot and the ranking reads like a real stack.
-
----
-
-## Dashboard
-
-Served at `/` by `jmi serve`. Six sections behind a nav bar, not one endless page.
-
-| Section | What it answers |
-|---|---|
-| **Overview** | Headline metrics, plus which skills are gaining and losing ground |
-| **Jobs** | Search the corpus, apply on the source site, save what you like |
-| **Skills** | Demand, pay and co-occurrence: what a skill travels with |
-| **Compensation** | Percentile bands and the distribution shape |
-| **Skill Gap** | What to learn next, given what you already know |
-| **Pipeline** | Crawl telemetry: what ran, what it fetched, what it cost |
-
-### The part that is not just another dashboard
-
-Most job dashboards describe the market. These three answer *"what does it mean
-for me"*, which is the question a job seeker actually has.
-
-**Skill gap analysis**: enter your stack and it runs a marginal analysis. For
-every skill you lack, how many *additional* postings would you qualify for by
-learning that one thing? Not raw popularity: the most common skill in the
-corpus is useless advice if you already have it. Each recommendation carries the
-salary of the jobs it unlocks and the sample size behind it.
-
-```
-Profile: python, sql            1,562 postings analysed
-                                you qualify for 51 (3.3%) · 760 within two skills
-
-  learn Salesforce     unlocks +73 jobs   avg $223,831
-  learn Security       unlocks +33 jobs   avg $241,408
-  learn System Design  unlocks +30 jobs   avg $311,578
-```
-
-**Match scoring**: every posting is scored against your stack (share of its
-required skills you cover) and the job list can be ranked by it.
-
-**Skill momentum**: what is rising and falling, measured on *posting dates*
-rather than crawl time. Crawl time would make every skill appear to spike on the
-day the crawler first ran. Raw counts ship next to the percentage, because
-"+800%" from a base of one is not a trend.
-
-Everything else is table stakes: shared filters that drive the charts *and* the
-analytics endpoints, saved jobs, CSV export, debounced search, pagination,
-keyboard shortcuts, and a light/dark theme that persists.
-
----
-
-## CLI
-
-```bash
-jmi init                        # schema + skill taxonomy
-jmi scrape                      # crawl all enabled sources
-jmi scrape -s hackernews        # crawl one source
-jmi reprocess                   # re-enrich stored postings (no network)
-jmi stats                       # corpus overview, source split, pay by seniority
-jmi skills --limit 20           # ranked skill demand with average salary
-jmi skills --category ml        # filter to one category
-jmi runs                        # crawl history: requests, bytes, failures, timing
-jmi export --format csv         # dump to CSV/JSON for pandas or Excel
-jmi serve                       # API + dashboard
-jmi schedule --every 360        # crawl on a timer
-jmi db reset --yes              # drop and recreate
-```
-
-## API
-
-Interactive docs at `/docs` (OpenAPI is generated from the response models).
-
-| Endpoint | Returns |
-|---|---|
-| `GET /api/jobs` | Paged search filtered by skill (AND), source, seniority, country, remote, salary disclosed, recency. Pass `have=` to score each posting against a profile and `sort=match` to rank by it |
-| `GET /api/jobs/{id}` | One posting with extracted skills and its cross-posts on other boards |
-| `GET /api/analytics/overview` | Headline counters |
-| `GET /api/analytics/skills` | Ranked demand with the salary attached to each skill |
-| `GET /api/analytics/skills/{slug}/cooccurrence` | What that skill is paired with |
-| `GET /api/analytics/trends` | Demand per week, one series per skill |
-| `GET /api/analytics/salary/seniority` | Pay bands |
-| `GET /api/analytics/breakdown/{dimension}` | Counts by source, country, region, seniority, company |
-| `GET /api/analytics/skill-gap` | Marginal analysis: which skill unlocks the most jobs |
-| `GET /api/analytics/momentum` | Rising and falling skills across two windows |
-| `GET /api/analytics/salary/distribution` | Percentiles and histogram |
-| `GET /api/skills` | The full skill taxonomy |
-| `GET /api/analytics/runs` | Crawl audit trail |
-| `GET /api/health` | Liveness + row count |
-
-Every filter applies to the analytics endpoints too, so
-`/api/analytics/skills?remote_only=true&country=Germany` answers "what do remote
-German employers ask for" without any new code.
-
----
 
 ## Data quality: known limits
 
@@ -331,20 +379,6 @@ dashboard:
 - **Skill extraction is lexical, not semantic.** It reads what a posting *says*,
   which is not always what the job requires.
 
-## Sources deliberately left out
-
-Two well-known boards were evaluated and rejected, which matters more than the
-list of ones included:
-
-- **rozee.pk** (Pakistan's largest board) sits behind a Cloudflare bot
-  challenge. Getting past it would mean evading bot protection, so it is out.
-- **Remotive** and **Jobicy** both serve their `robots.txt` from behind the same
-  challenge, so their crawl policy cannot be read at all. A crawler that cannot
-  verify permission should not assume it.
-
-Every included source has a readable, permissive `robots.txt`, or in Mustakbil's
-case a sitemap that explicitly invites crawling.
-
 ## Ethics and compliance
 
 - `robots.txt` is respected on every host, including `Crawl-delay`.
@@ -357,9 +391,9 @@ case a sitemap that explicitly invites crawling.
   API terms ask consumers to link back, and every stored row keeps its canonical
   source URL so that attribution survives.
 
----
+## Development
 
-## Testing
+### Testing
 
 ```bash
 pytest              # 139 tests
@@ -371,7 +405,7 @@ priority (`Senior Engineering Manager` is a *manager*), location parsing,
 duplicate detection, savepoint isolation, idempotency, retirement semantics, and
 the full API contract.
 
-## Project layout
+### Project layout
 
 ```
 src/jmi/
@@ -382,6 +416,7 @@ src/jmi/
 ├─ scrapers/
 │  ├─ base.py            robots, rate limiting, conditional GET, retry
 │  ├─ remoteok.py  weworkremotely.py  hackernews.py  greenhouse.py
+│  ├─ lever.py  mustakbil.py  himalayas.py  arbeitnow.py
 │  └─ registry.py        add a source = one class + one line
 ├─ pipeline/
 │  ├─ normalize.py       seniority · employment type · remote · location
@@ -397,7 +432,7 @@ src/jmi/
 └─ scheduler.py          APScheduler, non-overlapping runs
 ```
 
-## Adding a source
+### Adding a source
 
 Implement `fetch()` and register the class. The rest of the pipeline
 (normalisation, salary, skills, dedup, storage, API, dashboard) applies
@@ -428,5 +463,3 @@ Then add it to `SCRAPER_CLASSES` in `scrapers/registry.py`.
 ## Licence
 
 MIT. Scraped content belongs to its original publishers.
-#   J o b - S c r a p i n g - P r o j e c t  
- 
