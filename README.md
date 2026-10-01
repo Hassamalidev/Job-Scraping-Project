@@ -144,6 +144,7 @@ jmi export --format csv         # dump to CSV/JSON for pandas or Excel
 jmi serve                       # API + dashboard
 jmi schedule --every 360        # crawl on a timer
 jmi db check                    # connect to the configured database and report what is there
+jmi db copy --to <url>           # copy the corpus to another database (e.g. SQLite to Postgres)
 jmi db reset --yes              # drop and recreate
 ```
 
@@ -396,7 +397,7 @@ dashboard:
 ### Testing
 
 ```bash
-pytest              # 139 tests
+pytest              # 152 tests
 ```
 
 The suite covers the parts that actually break: salary edge cases (including the

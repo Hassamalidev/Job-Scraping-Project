@@ -44,16 +44,38 @@ one tells you which part failed, with the password masked so it is safe to paste
 into a search. Do this now: finding a bad connection string here takes one
 command, finding it after deploying means reading container logs.
 
-### Create the schema and load the data
+### Load the data
+
+Deploying creates the tables but leaves them **empty**, which is the single most
+common surprise: the site comes up perfectly and shows zeros everywhere.
+
+If you already have a local corpus, copy it rather than re-crawling:
 
 ```bash
-jmi init      # creates tables on Neon
-jmi scrape    # ~12 minutes, fills it from all eight sources
-jmi db check  # confirms the row count landed
+jmi db copy --to "postgresql+psycopg://...neon.tech/neondb?sslmode=require"
 ```
 
-Run this from your own machine. There is no reason to make the first crawl
-happen in CI.
+That moves every table and preserves row ids, so cross-post duplicate links and
+skill associations survive intact. It also realigns Postgres identity sequences
+afterwards, without which the next crawl would collide with existing primary
+keys.
+
+Starting from nothing instead:
+
+```bash
+export JMI_DATABASE_URL="postgresql+psycopg://...neon.tech/neondb?sslmode=require"
+jmi init      # create the tables
+jmi scrape    # ~12 minutes across all eight sources
+```
+
+Either way, confirm before moving on:
+
+```bash
+jmi db check  # should report the row count, not zero
+```
+
+Run this from your own machine. There is no reason to make the first load happen
+in CI.
 
 ---
 
@@ -90,6 +112,11 @@ Check `/api/health` after deploying. It reports which backend is live:
 ```
 
 If it says `"database":"sqlite"`, the variable did not reach the service.
+
+**If it says `postgresql` but `total_jobs` is 0**, the connection is fine and the
+database is simply empty. Load it with `jmi db copy` or `jmi scrape` as above.
+The dashboard renders zeros rather than an error because an empty corpus is a
+valid state, not a failure.
 
 ### What to expect on the free plan
 

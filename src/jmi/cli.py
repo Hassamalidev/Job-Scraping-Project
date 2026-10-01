@@ -35,7 +35,7 @@ from .analytics.queries import (
     salary_by_seniority,
     top_skills,
 )
-from .config import get_settings
+from .config import get_settings, mask_url
 from .db import get_engine, init_db, reset_db, session_scope
 from .pipeline.ingest import run_all, run_source, seed_skills
 from .scrapers.registry import SCRAPERS, available_sources
@@ -372,6 +372,134 @@ def db_check() -> None:
         console.print(f"Last crawl: {last[0]} at {str(last[1])[:19]} ({last[2]})")
     if jobs == 0:
         console.print("[yellow]Schema is ready but empty. Run 'jmi scrape'.[/yellow]")
+
+
+@db_app.command("copy")
+def db_copy(
+    to: Annotated[str, typer.Option("--to", help="Destination database URL")],
+    source: Annotated[
+        str | None, typer.Option("--from", help="Source URL (defaults to the configured one)")
+    ] = None,
+    wipe: Annotated[bool, typer.Option("--wipe", help="Clear the destination first")] = False,
+    batch_size: Annotated[int, typer.Option("--batch")] = 500,
+) -> None:
+    """Copy a whole corpus between databases, e.g. local SQLite to hosted Postgres.
+
+    Deploying gives you an empty database, and re-crawling to fill it throws away
+    work you have already done. This moves the rows instead, preserving ids so
+    duplicate links and skill associations survive the trip.
+    """
+    from sqlalchemy import create_engine, func, insert, select, text
+    from sqlalchemy import inspect as sqlalchemy_inspect
+
+    from .models import Base, Job
+
+    settings = get_settings()
+    source_url = source or settings.database_url
+    if mask_url(source_url) == mask_url(to):
+        console.print("[red]Source and destination are the same database.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"From: [cyan]{mask_url(source_url)}[/cyan]")
+    console.print(f"To:   [cyan]{mask_url(to)}[/cyan]")
+
+    src_engine = create_engine(source_url)
+    dst_engine = create_engine(to)
+
+    # A SQLite URL pointing at a path that does not exist is created empty and
+    # silently copies nothing, which looks like success. Fail loudly instead.
+    with src_engine.connect() as conn:
+        if not sqlalchemy_inspect(conn).has_table(Job.__tablename__):
+            console.print(f"[red]Source has no tables:[/red] {mask_url(source_url)}")
+            console.print("Check the path. Run this from the project root.")
+            raise typer.Exit(code=1)
+        available = conn.execute(select(func.count()).select_from(Job.__table__)).scalar() or 0
+    if available == 0:
+        console.print(f"[red]Source database is empty:[/red] {mask_url(source_url)}")
+        console.print("Nothing to copy. Check the path, or run 'jmi scrape' first.")
+        raise typer.Exit(code=1)
+    console.print(f"Source holds {available:,} postings.")
+
+    Base.metadata.create_all(dst_engine)
+
+    tables = list(Base.metadata.sorted_tables)
+
+    with dst_engine.connect() as conn:
+        existing = conn.execute(select(func.count()).select_from(Job.__table__)).scalar() or 0
+    if existing and not wipe:
+        console.print(
+            f"[yellow]Destination already holds {existing:,} postings.[/yellow] "
+            "Re-run with --wipe to replace them."
+        )
+        raise typer.Exit(code=1)
+
+    copied: dict[str, int] = {}
+    with (
+        src_engine.connect().execution_options(yield_per=batch_size) as src_conn,
+        dst_engine.begin() as dst_conn,
+    ):
+
+        if wipe:
+            for table in reversed(tables):
+                dst_conn.execute(table.delete())
+            console.print("Destination cleared.")
+
+        # jobs.duplicate_of_id points at another row in the same table, so the
+        # target it references may not exist yet. Insert the links as NULL and
+        # set them afterwards, once every row is present.
+        deferred_links: list[dict] = []
+
+        for table in tables:
+            total = 0
+            result = src_conn.execute(select(table))
+            for chunk in result.partitions():
+                rows = [dict(row._mapping) for row in chunk]
+                if not rows:
+                    continue
+                if table.name == "jobs":
+                    for row in rows:
+                        if row.get("duplicate_of_id") is not None:
+                            deferred_links.append(
+                                {"row_id": row["id"], "points_to": row["duplicate_of_id"]}
+                            )
+                            row["duplicate_of_id"] = None
+                dst_conn.execute(insert(table), rows)
+                total += len(rows)
+            copied[table.name] = total
+            if total:
+                console.print(f"  {table.name:<20} {total:>7,} rows")
+
+        if deferred_links:
+            jobs = Job.__table__
+            for link in deferred_links:
+                dst_conn.execute(
+                    jobs.update()
+                    .where(jobs.c.id == link["row_id"])
+                    .values(duplicate_of_id=link["points_to"])
+                )
+            console.print(f"  {'duplicate links':<20} {len(deferred_links):>7,} restored")
+
+        # Explicit ids do not advance Postgres identity sequences, so the next
+        # insert would collide with an existing primary key.
+        if dst_conn.dialect.name == "postgresql":
+            for table in tables:
+                primary = list(table.primary_key.columns)
+                if len(primary) != 1:
+                    continue
+                column = primary[0].name
+                dst_conn.execute(
+                    text(
+                        f"SELECT setval(pg_get_serial_sequence('{table.name}', '{column}'), "
+                        f"GREATEST(COALESCE((SELECT MAX({column}) FROM {table.name}), 1), 1)) "
+                        f"WHERE pg_get_serial_sequence('{table.name}', '{column}') IS NOT NULL"
+                    )
+                )
+            console.print("Identity sequences realigned.")
+
+    console.print(
+        f"[green]Copied {copied.get('jobs', 0):,} postings.[/green] "
+        "Verify with: jmi db check"
+    )
 
 
 @db_app.command("reset")
